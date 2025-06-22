@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Volatility 100 Live Analyzer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 30px; }
+        .status { font-size: 1.5em; margin-top: 20px; padding: 20px; display: inline-block; border-radius: 10px; }
+        .Rise { background: #c8f7c5; color: #2d862d; }
+        .Fall { background: #f7c5c5; color: #b30000; }
+        .Equal { background: #e6e6e6; color: #333; }
+    </style>
+</head>
+<body>
+    <h1>Volatility 100 Live Analyzer</h1>
+    <p>Son 5 Rakam: <span id="lastDigits">Yükleniyor...</span></p>
+    <div id="patternResult" class="status">Bekleniyor...</div>
+
+    <script>
+        let patternData = {};
+        let lastFive = [];
+
+        async function loadPatterns() {
+            const response = await fetch("data/patterns.csv");
+            const text = await response.text();
+            const lines = text.split("\n");
+            for (let line of lines.slice(1)) {
+                const [_, pattern, result] = line.split(",");
+                if (pattern && result) {
+                    patternData[pattern.trim()] = result.trim();
+                }
+            }
+        }
+
+        function updateDisplay() {
+            const digits = lastFive.slice(-5);
+            document.getElementById("lastDigits").textContent = digits.join(', ');
+            const key = digits.join('');
+            const result = patternData[key] || "Bilinmiyor";
+            const resultDiv = document.getElementById("patternResult");
+            resultDiv.textContent = result;
+            resultDiv.className = "status " + result;
+        }
+
+        async function connectToDeriv() {
+            const socket = new WebSocket("wss://ws.binaryws.com/websockets/v3?app_id=1089");
+
+            socket.onopen = function() {
+                socket.send(JSON.stringify({
+                    "ticks": "R_100",
+                    "subscribe": 1
+                }));
+            };
+
+            socket.onmessage = function(msg) {
+                const data = JSON.parse(msg.data);
+                if (data.tick && data.tick.quote) {
+                    const priceStr = data.tick.quote.toString();
+                    const lastDigit = parseInt(priceStr.slice(-1));
+                    lastFive.push(lastDigit);
+                    if (lastFive.length > 5) lastFive.shift();
+                    if (lastFive.length === 5) {
+                        updateDisplay();
+                    }
+                }
+            };
+        }
+
+        async function start() {
+            await loadPatterns();
+            await connectToDeriv();
+        }
+
+        start();
+    </script>
+</body>
+</html>
